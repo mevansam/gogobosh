@@ -38,29 +38,35 @@ func (c *Client) GetStemcells() (stemcells []Stemcell, err error) {
 }
 
 // UploadStemcell to given BOSH
-func (c *Client) UploadStemcell(stemcellURI string, sha1 *string) (task Task, err error) {
-	task, err = c.upload("/stemcells", stemcellURI, sha1)
+func (c *Client) UploadStemcell(url string, sha1 *string) (task Task, err error) {
+	task, err = c.upload("/stemcells", url, sha1)
 	return
 }
 
 // UploadRelease to given BOSH
-func (c *Client) UploadRelease(releaseURI string, sha1 *string) (task Task, err error) {
-	task, err = c.upload("/releases", releaseURI, sha1)
+func (c *Client) UploadRelease(url string, sha1 *string) (task Task, err error) {
+	task, err = c.upload("/releases", url, sha1)
 	return
 }
 
 // Upload a file to given BOSH path
-func (c *Client) upload(path string, fileURI string, sha1 *string) (task Task, err error) {
+func (c *Client) upload(path string, url string, sha1 *string) (task Task, err error) {
 
 	var (
 		isRemote bool
+		isFile   bool
 		resp     *http.Response
 		body     []byte
 	)
 
-	if isRemote, err = regexp.MatchString("^http(s)?://", fileURI); !isRemote {
-		if _, err = os.Stat(fileURI); os.IsNotExist(err) {
-			err = fmt.Errorf("Stemcell file '%s' does not exist.", fileURI)
+	if isRemote, err = regexp.MatchString("^http(s)?://", url); !isRemote {
+		if isFile, err = regexp.MatchString("^file://", url); !isFile {
+			url = url[7:]
+			if _, err = os.Stat(url); os.IsNotExist(err) {
+				err = fmt.Errorf("File '%s' does not exist.", url)
+			}
+		} else {
+			err = fmt.Errorf("Url protocol must be one of 'http[s]://' or 'file://'.")
 		}
 	}
 	if err != nil {
@@ -72,9 +78,9 @@ func (c *Client) upload(path string, fileURI string, sha1 *string) (task Task, e
 		r.header["Content-Type"] = "application/json"
 		body, err = json.Marshal(struct {
 			Location string  `json:"location"`
-			Sha1     *string `json:"sha1"`
+			Sha1     *string `json:"sha1,omitempty"`
 		}{
-			fileURI,
+			url,
 			sha1,
 		})
 		if err != nil {
@@ -82,7 +88,7 @@ func (c *Client) upload(path string, fileURI string, sha1 *string) (task Task, e
 		}
 	} else {
 		r.header["Content-Type"] = "application/x-compressed"
-		body, err = ioutil.ReadFile(fileURI)
+		body, err = ioutil.ReadFile(url)
 		if err != nil {
 			return
 		}
